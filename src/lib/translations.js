@@ -125,5 +125,10 @@ export const pt = {
     payNow: 'Pagar Agora',
     success: 'Pagamento concluído com sucesso!',
     redirecting: 'A redirecionar para o painel...'
+  },
+  adminDashboard: {
+    title: 'Painel Administrativo',
+    header: 'Painel Administrativo',
+    noOrders: 'Nenhum pedido encontrado.'
   }
 };

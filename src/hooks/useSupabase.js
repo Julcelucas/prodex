@@ -58,11 +58,17 @@ export const useSupabase = () => {
   // FUNCIONÁRIOS
   // ============================
   const getEmployees = useCallback(async (companyId) => {
-    const { data, error } = await supabase
+    let query = supabase
       .from('users')
       .select('*')
-      .eq('company_id', companyId)
       .eq('user_type', 'funcionario');
+
+    // when companyId is provided we filter, otherwise return all employees
+    if (companyId != null) {
+      query = query.eq('company_id', companyId);
+    }
+
+    const { data, error } = await query;
 
     if (error) {
       console.error("Erro ao buscar funcionários:", error);
@@ -75,10 +81,15 @@ export const useSupabase = () => {
   // ENCOMENDAS
   // ============================
   const getOrders = useCallback(async (companyId) => {
-    const { data, error } = await supabase
+    let query = supabase
       .from('orders')
-      .select('*')
-      .eq('company_id', companyId);
+      .select('*');
+
+    if (companyId != null) {
+      query = query.eq('company_id', companyId);
+    }
+
+    const { data, error } = await query;
 
     if (error) {
       console.error("Erro ao buscar encomendas:", error);

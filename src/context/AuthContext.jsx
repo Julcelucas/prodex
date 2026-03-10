@@ -1,12 +1,46 @@
 import React, { createContext, useState } from "react";
 import { supabase } from "../lib/supabase";
+import { useEffect } from "react";
+
 
 export const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
   const [currentUser, setCurrentUser] = useState(null);
   const [companyInfo, setCompanyInfo] = useState(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+  const getSession = async () => {
+    const { data } = await supabase.auth.getSession();
+
+    if (data.session?.user) {
+      const { data: user } = await supabase
+        .from("users")
+        .select("*")
+        .eq("id", data.session.user.id)
+        .single();
+
+      if (user) {
+        setCurrentUser(user);
+
+        if (user.company_id) {
+          const { data: company } = await supabase
+            .from("companies")
+            .select("*")
+            .eq("id", user.company_id)
+            .single();
+
+          setCompanyInfo(company);
+        }
+      }
+    }
+
+    setLoading(false);
+  };
+
+  getSession();
+}, []);
 
   // ==========================
   // REGISTRAR GESTOR
@@ -159,7 +193,7 @@ const login = async (email, password) => {
     }
 
     // 2️⃣ Login ADMIN via backend
-    const res = await fetch("http://localhost:5000/admin/login", {
+    const res = await fetch("http://localhost:5000", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, senha: password }),

@@ -17,25 +17,34 @@ const Login = () => {
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({ email: '', password: '' });
 
-  const handleSubmit = async (e) => {
-  e.preventDefault();
-  setLoading(true);
+const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
 
-  try {
-    const res = await login(formData.email, formData.password);
-    if (res.success) {
-      toast({ title: "Login bem-sucedido!", description: "Bem-vindo(a)!" });
-      if (res.user.user_type === 'gestor') navigate('/gestor-dashboard');
-      else navigate('/funcionario-dashboard');
-    } else {
-      throw new Error(res.error);
+    try {
+      const res = await login(formData.email, formData.password);
+      
+      if (res.success) {
+        toast({ title: "Login bem-sucedido!", description: "Bem-vindo(a)!" });
+        
+        // 👇 A LÓGICA CORRIGIDA AQUI
+        if (res.user.user_type === 'admin') {
+          navigate('/admin-dashboard');
+        } else if (res.user.user_type === 'gestor') {
+          navigate('/gestor-dashboard');
+        } else {
+          navigate('/funcionario-dashboard');
+        }
+
+      } else {
+        throw new Error(res.error);
+      }
+    } catch (err) {
+      toast({ title: "Erro no login", description: err.message, variant: 'destructive' });
+    } finally {
+      setLoading(false);
     }
-  } catch (err) {
-    toast({ title: "Erro no login", description: err.message, variant: 'destructive' });
-  } finally {
-    setLoading(false);
-  }
-};
+  };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">

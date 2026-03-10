@@ -1,9 +1,9 @@
-import React from 'react';
-import { Navigate } from 'react-router-dom';
-import { useAuth } from '@/hooks/useAuth';
+import React from "react";
+import { Navigate } from "react-router-dom";
+import { useAuth } from "@/hooks/useAuth";
 
 const ProtectedRoute = ({ children, userType: requiredUserType }) => {
-  const { currentUser, userType, loading } = useAuth();
+  const { currentUser, loading } = useAuth();
 
   if (loading) {
     return (
@@ -16,18 +16,23 @@ const ProtectedRoute = ({ children, userType: requiredUserType }) => {
     );
   }
 
+  // usuário não logado
   if (!currentUser) {
-    // Redirect to appropriate login page based on required user type
-    if (requiredUserType === 'admin') {
-      return <Navigate to="/admin/login" replace />;
+    if (requiredUserType === "admin") {
+      return <Navigate to="/admin-login" replace />;
     }
-    return <Navigate to="/customer/login" replace />;
+
+    return <Navigate to="/login" replace />;
   }
 
-  if (userType !== requiredUserType) {
-    // User is logged in but doesn't have the required user type
+  // usuário logado mas tipo errado
+  if (requiredUserType && currentUser.user_type !== requiredUserType) {
     return <Navigate to="/" replace />;
   }
+
+  if (requiredUserType && currentUser.user_type !== requiredUserType) {
+  return <Navigate to="/" replace />;
+}
 
   return children;
 };
