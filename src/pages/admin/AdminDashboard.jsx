@@ -19,7 +19,10 @@ import {
   MapPin,
   User,
   Phone,
-  Mail
+  Mail,
+  Building2,
+  Users,
+  ClipboardList
 } from 'lucide-react';
 
 import { pt } from '@/lib/translations';
@@ -28,7 +31,7 @@ const AdminDashboard = () => {
 
   const navigate = useNavigate();
   const { currentUser, logout } = useAuth();
-  const { getOrders, getEmployees, loading } = useSupabase();
+  const { getOrders, getEmployees, getCompanies, loading } = useSupabase();
 
   const [orders, setOrders] = useState([]);
   const [employees, setEmployees] = useState([]);
@@ -41,103 +44,122 @@ const AdminDashboard = () => {
     delivered: 0
   });
 
+  const [globalStats, setGlobalStats] = useState({
+    companies: 0,
+    employees: 0,
+    totalOrders: 0,
+    pendingOrders: 0,
+    deliveringOrders: 0,
+    deliveredOrders: 0
+  });
+
   // =============================
   // CARREGAR DADOS
   // =============================
 
-  useEffect(() => {
+  const loadData = async () => {
 
-    const loadData = async () => {
+    if (!currentUser) return;
 
-      if (!currentUser) return;
+    try {
 
-      try {
+      let companyId = currentUser.company_id;
 
-        // determine which company to load data for
-        // admin users should not filter by company, so we pass undefined
-        let companyId = currentUser.company_id;
-        if (currentUser.user_type === "admin") {
-          companyId = undefined;
-        }
-
-        const fetchedOrders = await getOrders(companyId);
-        const fetchedEmployees = await getEmployees(companyId);
-
-        const ordersData = fetchedOrders || [];
-        const employeesData = fetchedEmployees || [];
-
-        setOrders(ordersData);
-        setEmployees(employeesData);
-
-        // =============================
-        // ESTATÍSTICAS
-        // =============================
-
-        const newStats = {
-          pending: ordersData.filter(o => o.status === 'pending').length,
-          delayed: ordersData.filter(o =>
-            o.status === 'pending' &&
-            new Date(o.desired_delivery_time) < new Date()
-          ).length,
-          in_delivery: ordersData.filter(o => o.status === 'in_delivery').length,
-          delivered: ordersData.filter(o => o.status === 'delivered').length,
-        };
-
-        setStats(newStats);
-
-        // =============================
-        // PRIORIDADE DE PEDIDOS
-        // =============================
-
-        const now = new Date();
-        const twoHoursFromNow = new Date(now.getTime() + 2 * 60 * 60 * 1000);
-
-        const prioritized = ordersData
-          .filter(o => o.status !== 'delivered' && o.status !== 'cancelled')
-          .map(order => {
-
-            const deliveryTime = new Date(order.desired_delivery_time);
-
-            let priority = 'green';
-            let priorityScore = 3;
-
-            if (deliveryTime < now) {
-              priority = 'red';
-              priorityScore = 1;
-            }
-            else if (deliveryTime <= twoHoursFromNow) {
-              priority = 'yellow';
-              priorityScore = 2;
-            }
-
-            return {
-              ...order,
-              priority,
-              priorityScore,
-              deliveryTime
-            };
-
-          })
-          .sort((a, b) => {
-
-            if (a.priorityScore !== b.priorityScore) {
-              return a.priorityScore - b.priorityScore;
-            }
-
-            return a.deliveryTime - b.deliveryTime;
-
-          });
-
-        setPrioritizedOrders(prioritized);
-
-      } catch (error) {
-        console.error("Erro ao carregar dados do dashboard:", error);
+      if (currentUser.user_type === "admin") {
+        companyId = undefined;
       }
 
-    };
+      const fetchedOrders = await getOrders(companyId);
+      const fetchedEmployees = await getEmployees(companyId);
 
+      const ordersData = fetchedOrders || [];
+      const employeesData = fetchedEmployees || [];
+
+      setOrders(ordersData);
+      setEmployees(employeesData);
+
+      // =============================
+      // ESTATÍSTICAS GLOBAIS
+      // =============================
+
+      setGlobalStats({
+        companies: new Set(ordersData.map(o => o.company_id)).size,
+        employees: employeesData.length,
+        totalOrders: ordersData.length,
+        pendingOrders: ordersData.filter(o => o.status === 'pending').length,
+        deliveringOrders: ordersData.filter(o => o.status === 'in_delivery').length,
+        deliveredOrders: ordersData.filter(o => o.status === 'delivered').length
+      });
+
+      // =============================
+      // ESTATÍSTICAS DE STATUS
+      // =============================
+
+      const newStats = {
+        pending: ordersData.filter(o => o.status === 'pending').length,
+        delayed: ordersData.filter(o =>
+          o.status === 'pending' &&
+          new Date(o.desired_delivery_time) < new Date()
+        ).length,
+        in_delivery: ordersData.filter(o => o.status === 'in_delivery').length,
+        delivered: ordersData.filter(o => o.status === 'delivered').length,
+      };
+
+      setStats(newStats);
+
+      // =============================
+      // PRIORIDADE DOS PEDIDOS
+      // =============================
+
+      const now = new Date();
+      const twoHoursFromNow = new Date(now.getTime() + 2 * 60 * 60 * 1000);
+
+      const prioritized = ordersData
+        .filter(o => o.status !== 'delivered' && o.status !== 'cancelled')
+        .map(order => {
+
+          const deliveryTime = new Date(order.desired_delivery_time);
+
+          let priority = 'green';
+          let priorityScore = 3;
+
+          if (deliveryTime < now) {
+            priority = 'red';
+            priorityScore = 1;
+          }
+          else if (deliveryTime <= twoHoursFromNow) {
+            priority = 'yellow';
+            priorityScore = 2;
+          }
+
+          return {
+            ...order,
+            priority,
+            priorityScore,
+            deliveryTime
+          };
+
+        })
+        .sort((a, b) => {
+
+          if (a.priorityScore !== b.priorityScore) {
+            return a.priorityScore - b.priorityScore;
+          }
+
+          return a.deliveryTime - b.deliveryTime;
+
+        });
+
+      setPrioritizedOrders(prioritized);
+
+    } catch (error) {
+      console.error("Erro ao carregar dados do dashboard:", error);
+    }
+
+  };
+
+  useEffect(() => {
     loadData();
-
   }, [currentUser]);
 
   // =============================
@@ -190,7 +212,7 @@ const AdminDashboard = () => {
   };
 
   // =============================
-  // STATUS BADGE
+  // BADGE DE STATUS
   // =============================
 
   const getStatusBadge = (status) => {
@@ -224,9 +246,7 @@ const AdminDashboard = () => {
 
   };
 
-  if (!currentUser) {
-    return null;
-  }
+  if (!currentUser) return null;
 
   // =============================
   // UI
@@ -247,7 +267,7 @@ const AdminDashboard = () => {
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
 
           <div className="flex items-center gap-3">
-            <Shield className="h-8 w-8 text-gray-900" />
+            <Shield className="h-8 w-8 text-gray-900"/>
             <h1 className="text-2xl font-bold text-gray-900">
               {pt.adminDashboard.header}
             </h1>
@@ -259,12 +279,8 @@ const AdminDashboard = () => {
               Admin: {currentUser?.name}
             </span>
 
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleLogout}
-            >
-              <LogOut className="h-4 w-4 mr-2" />
+            <Button variant="outline" size="sm" onClick={handleLogout}>
+              <LogOut className="h-4 w-4 mr-2"/>
               {pt.common.logout}
             </Button>
 
@@ -278,6 +294,74 @@ const AdminDashboard = () => {
 
       <div className="container mx-auto px-4 py-8">
 
+        {/* ESTATÍSTICAS */}
+
+        <div className="grid md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
+
+          <Card>
+            <CardContent className="p-4 flex items-center gap-3">
+              <Building2 className="h-6 w-6 text-blue-600"/>
+              <div>
+                <p className="text-sm text-gray-500">Empresas</p>
+                <p className="text-xl font-bold">{globalStats.companies}</p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-4 flex items-center gap-3">
+              <Users className="h-6 w-6 text-purple-600"/>
+              <div>
+                <p className="text-sm text-gray-500">Funcionários</p>
+                <p className="text-xl font-bold">{globalStats.employees}</p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-4 flex items-center gap-3">
+              <ClipboardList className="h-6 w-6 text-gray-600"/>
+              <div>
+                <p className="text-sm text-gray-500">Pedidos</p>
+                <p className="text-xl font-bold">{globalStats.totalOrders}</p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-4 flex items-center gap-3">
+              <Clock className="h-6 w-6 text-yellow-600"/>
+              <div>
+                <p className="text-sm text-gray-500">Pendentes</p>
+                <p className="text-xl font-bold">{globalStats.pendingOrders}</p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-4 flex items-center gap-3">
+              <Truck className="h-6 w-6 text-blue-500"/>
+              <div>
+                <p className="text-sm text-gray-500">Em entrega</p>
+                <p className="text-xl font-bold">{globalStats.deliveringOrders}</p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-4 flex items-center gap-3">
+              <CheckCircle className="h-6 w-6 text-green-600"/>
+              <div>
+                <p className="text-sm text-gray-500">Entregues</p>
+                <p className="text-xl font-bold">{globalStats.deliveredOrders}</p>
+              </div>
+            </CardContent>
+          </Card>
+
+        </div>
+
+        {/* PEDIDOS PRIORITÁRIOS */}
+
         {loading ? (
 
           <div className="flex justify-center py-20">
@@ -288,7 +372,7 @@ const AdminDashboard = () => {
 
           <Card>
             <CardContent className="py-20 text-center">
-              <Package className="h-16 w-16 text-gray-400 mx-auto mb-4" />
+              <Package className="h-16 w-16 text-gray-400 mx-auto mb-4"/>
               <p>{pt.adminDashboard.noOrders}</p>
             </CardContent>
           </Card>
@@ -304,17 +388,14 @@ const AdminDashboard = () => {
 
               return (
 
-                <Card
-                  key={order.id}
-                  className={`${priorityStyle.border} ${priorityStyle.bg}`}
-                >
+                <Card key={order.id} className={`${priorityStyle.border} ${priorityStyle.bg}`}>
 
                   <CardHeader>
 
                     <div className="flex items-center gap-3">
 
                       <Badge className={priorityStyle.badge}>
-                        <PriorityIcon className="h-3 w-3 mr-1" />
+                        <PriorityIcon className="h-3 w-3 mr-1"/>
                         {priorityStyle.label}
                       </Badge>
 
@@ -323,7 +404,7 @@ const AdminDashboard = () => {
                     </div>
 
                     <CardTitle>
-                      Pedido #{order.id.slice(0, 8)}
+                      Pedido #{order.id.slice(0,8)}
                     </CardTitle>
 
                   </CardHeader>
@@ -333,19 +414,15 @@ const AdminDashboard = () => {
                     <div className="grid md:grid-cols-2 gap-4">
 
                       <div>
-
-                        <p><User className="inline h-4 w-4 mr-1" /> {order.customer_name}</p>
-                        <p><Phone className="inline h-4 w-4 mr-1" /> {order.customer_phone}</p>
-                        <p><Mail className="inline h-4 w-4 mr-1" /> {order.customer_email}</p>
-
+                        <p><User className="inline h-4 w-4 mr-1"/> {order.customer_name}</p>
+                        <p><Phone className="inline h-4 w-4 mr-1"/> {order.customer_phone}</p>
+                        <p><Mail className="inline h-4 w-4 mr-1"/> {order.customer_email}</p>
                       </div>
 
                       <div>
-
-                        <p><MapPin className="inline h-4 w-4 mr-1" /> {order.customer_address}</p>
-                        <p><Clock className="inline h-4 w-4 mr-1" /> {formatDateTime(order.desired_delivery_time)}</p>
-                        <p><Package className="inline h-4 w-4 mr-1" /> {order.description}</p>
-
+                        <p><MapPin className="inline h-4 w-4 mr-1"/> {order.customer_address}</p>
+                        <p><Clock className="inline h-4 w-4 mr-1"/> {formatDateTime(order.desired_delivery_time)}</p>
+                        <p><Package className="inline h-4 w-4 mr-1"/> {order.description}</p>
                       </div>
 
                     </div>
@@ -354,16 +431,7 @@ const AdminDashboard = () => {
 
                       <OrderActions
                         order={order}
-                        onUpdate={async () => {
-
-                          const updated = await getOrders(
-                            currentUser?.user_type === 'admin'
-                              ? undefined
-                              : currentUser?.company_id
-                          );
-                          setOrders(updated);
-
-                        }}
+                        onUpdate={loadData}
                       />
 
                     </div>
