@@ -55,6 +55,21 @@ export const useSupabase = () => {
   }, []);
 
   // ============================
+  // EMPRESAS
+  // ============================
+  const getCompanies = useCallback(async () => {
+    const { data, error } = await supabase
+      .from('companies')
+      .select('*');
+
+    if (error) {
+      console.error("Erro ao buscar empresas:", error);
+      return [];
+    }
+    return data || [];
+  }, []);
+
+  // ============================
   // FUNCIONÁRIOS
   // ============================
   const getEmployees = useCallback(async (companyId) => {
@@ -98,30 +113,46 @@ export const useSupabase = () => {
     return data || [];
   }, []);
 
-  const createOrder = useCallback(async (orderData) => {
-    setLoading(true);
-    try {
-      const { data, error } = await supabase
-        .from('orders')
-        .insert({
-          ...orderData,
-          status: 'pendente',
-          assigned_to: null,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        })
-        .select()
-        .single();
+const createOrder = useCallback(async (orderData, companyId) => {
 
-      if (error) throw error;
-      return { success: true, data };
-    } catch (error) {
-      console.error(error);
-      return { success: false, error: error.message };
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  setLoading(true);
+
+  try {
+
+    const { data, error } = await supabase
+      .from('orders')
+      .insert({
+        ...orderData,
+
+        // 🔴 ESTA LINHA É A MAIS IMPORTANTE
+        company_id: companyId,
+
+        status: 'pending',
+        assigned_to: null,
+
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    return { success: true, data };
+
+  } catch (error) {
+
+    console.error("Erro ao criar pedido:", error);
+
+    return { success: false, error: error.message };
+
+  } finally {
+
+    setLoading(false);
+
+  }
+
+}, []);
 
   const updateOrderStatus = useCallback(async (orderId, newStatus, changedBy) => {
     setLoading(true);
@@ -183,6 +214,7 @@ export const useSupabase = () => {
     getOrders,
     createOrder,
     updateOrderStatus,
-    assignOrder
+    assignOrder,
+    getCompanies
   };
 };

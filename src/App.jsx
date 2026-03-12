@@ -9,31 +9,46 @@ import ProtectedRoute from './components/ProtectedRoute';
 import HomePage from './pages/HomePage';
 import PricingPage from './pages/PricingPage';
 import CheckoutPage from './pages/CheckoutPage';
+
+// Auth
 import GestorRegister from './pages/auth/GestorRegister';
 import FuncionarioRegister from './pages/auth/FuncionarioRegister';
 import Login from './pages/auth/Login';
 import AdminLogin from './pages/admin/AdminLogin';
+
+// Dashboards
 import GestorDashboard from './pages/dashboard/GestorDashboard';
 import FuncionarioDashboard from './pages/dashboard/FuncionarioDashboard';
-import AdminDashboard from './pages/admin/AdminDashboard'; // ✅ CORRIGIDO
+import AdminDashboard from './pages/admin/AdminDashboard';
+
+// Orders
+import CreateOrder from './pages/customer/CreateOrder'; // ✅ IMPORTANTE
 
 function App() {
   return (
     <AuthProvider>
       <Router>
         <ScrollToTop />
+
         <Routes>
+
+          {/* Public Pages */}
           <Route path="/" element={<HomePage />} />
           <Route path="/pricing" element={<PricingPage />} />
           <Route path="/checkout" element={<CheckoutPage />} />
 
-          {/* Login Pages */}
+          {/* Login */}
           <Route path="/login" element={<Login />} />
           <Route path="/admin-login" element={<AdminLogin />} />
+
+          {/* Register */}
           <Route path="/gestor-register" element={<GestorRegister />} />
           <Route path="/funcionario-register" element={<FuncionarioRegister />} />
 
-          {/* Protected Dashboards */}
+          {/* ========================= */}
+          {/* DASHBOARDS PROTEGIDOS */}
+          {/* ========================= */}
+
           <Route
             path="/gestor-dashboard"
             element={
@@ -61,7 +76,23 @@ function App() {
             }
           />
 
-          {/* Catch All - 404 */}
+          {/* ========================= */}
+          {/* CRIAR PEDIDO */}
+          {/* ========================= */}
+
+          <Route
+            path="/create-order"
+            element={
+              <ProtectedRoute userType="gestor">
+                <CreateOrder />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* ========================= */}
+          {/* 404 */}
+          {/* ========================= */}
+
           <Route
             path="*"
             element={
@@ -69,14 +100,19 @@ function App() {
                 <div className="text-center">
                   <h1 className="text-6xl font-bold text-gray-900 mb-4">404</h1>
                   <p className="text-xl text-gray-600 mb-8">Página não encontrada</p>
-                  <a href="/" className="text-blue-600 hover:text-blue-700 font-semibold">
+                  <a
+                    href="/"
+                    className="text-blue-600 hover:text-blue-700 font-semibold"
+                  >
                     Voltar ao Início
                   </a>
                 </div>
               </div>
             }
           />
+
         </Routes>
+
         <Toaster />
       </Router>
     </AuthProvider>

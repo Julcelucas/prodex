@@ -72,8 +72,17 @@ const AdminDashboard = () => {
       const fetchedOrders = await getOrders(companyId);
       const fetchedEmployees = await getEmployees(companyId);
 
+      // always fetch all companies for dashboard stats (only for admins)
+      const fetchedCompanies = currentUser.user_type === 'admin' ? await getCompanies() : [];
+
       const ordersData = fetchedOrders || [];
       const employeesData = fetchedEmployees || [];
+      const companiesData = fetchedCompanies || [];
+
+      console.log("📊 ADMIN - Pedidos carregados:", ordersData.length);
+      ordersData.forEach((order, i) => {
+        console.log(`  Pedido ${i + 1}: company_id = ${order.company_id}`);
+      });
 
       setOrders(ordersData);
       setEmployees(employeesData);
@@ -82,8 +91,19 @@ const AdminDashboard = () => {
       // ESTATÍSTICAS GLOBAIS
       // =============================
 
+      // compute companies count: for admins use fetched list, otherwise if restricted to a single company use 1
+      let companiesCount = companiesData.length;
+      if (!companiesCount) {
+        if (companyId != null) {
+          companiesCount = 1;
+        } else {
+          // fallback to unique company IDs from orders in case getCompanies wasn't called or returned empty
+          companiesCount = new Set(ordersData.map(o => o.company_id)).size;
+        }
+      }
+
       setGlobalStats({
-        companies: new Set(ordersData.map(o => o.company_id)).size,
+        companies: companiesCount,
         employees: employeesData.length,
         totalOrders: ordersData.length,
         pendingOrders: ordersData.filter(o => o.status === 'pending').length,
