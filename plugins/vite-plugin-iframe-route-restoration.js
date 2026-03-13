@@ -12,14 +12,14 @@ export default function iframeRouteRestorationPlugin() {
 
         // Check to see if the page is in an iframe
         if (window.self !== window.top) {
-          const STORAGE_KEY = 'horizons-iframe-saved-route';
+          let savedRouteInMemory = null;
 
           const getCurrentRoute = () => location.pathname + location.search + location.hash;
 
           const save = () => {
             try {
               const currentRoute = getCurrentRoute();
-              sessionStorage.setItem(STORAGE_KEY, currentRoute);
+              savedRouteInMemory = currentRoute;
               window.parent.postMessage({message: 'route-changed', route: currentRoute}, '*');
             } catch {}
           };
@@ -35,11 +35,11 @@ export default function iframeRouteRestorationPlugin() {
 
           const restore = () => {
             try {
-              const saved = sessionStorage.getItem(STORAGE_KEY);
+              const saved = savedRouteInMemory;
               if (!saved) return;
 
               if (!saved.startsWith('/')) {
-                sessionStorage.removeItem(STORAGE_KEY);
+                savedRouteInMemory = null;
                 return;
               }
 
@@ -100,7 +100,7 @@ export default function iframeRouteRestorationPlugin() {
               const parentOrigin = getParentOrigin();
 
               if (event.data?.type === "redirect-home" && parentOrigin && ALLOWED_PARENT_ORIGINS.includes(parentOrigin)) {
-                const saved = sessionStorage.getItem(STORAGE_KEY);
+                const saved = savedRouteInMemory;
 
                 if(saved && saved !== '/') {
                   replaceHistoryState('/')

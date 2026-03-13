@@ -59,7 +59,7 @@ async function run() {
 
     if (!componentsJsonExists) {
       const shadcnInitResult = await runCommand(
-        "npx -y shadcn@latest init -f --src-dir --no-base-style",
+        "npx -y shadcn@3 init -f --src-dir --no-base-style",
       );
 
       stdout = [shadcnInitResult.stdout, shadcnInitResult.stderr]
@@ -78,7 +78,7 @@ async function run() {
     // If there are installable components, install them
     if (installableComponentNames.length && !error) {
       const shadcnAddResult = await runCommand(
-        `npx -y shadcn@latest add ${installableComponentNames.join(" ")} -y -o --src-dir`,
+        `npx -y shadcn@3 add ${installableComponentNames.join(" ")} -y -o --src-dir`,
       );
 
       const shadcnAddOutput = [shadcnAddResult.stdout, shadcnAddResult.stderr]

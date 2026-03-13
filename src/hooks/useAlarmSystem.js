@@ -1,73 +1,182 @@
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { playSound } from '@/components/SoundAlarmSystem';
+import { getAlertsSnapshot, setAlertsSnapshot } from '@/lib/prodex-store';
+import { assertSupabaseConfigured, isSupabaseConfigured } from '@/lib/supabase';
 
-// A simple beep using Web Audio API
-const playBeep = () => {
-  try {
-    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    const oscillator = audioCtx.createOscillator();
-    const gainNode = audioCtx.createGain();
-    
-    oscillator.connect(gainNode);
-    gainNode.connect(audioCtx.destination);
-    
-    oscillator.type = 'sine';
-    oscillator.frequency.value = 880; // High beep
-    
-    gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime); // Low volume
-    
-    oscillator.start();
-    setTimeout(() => oscillator.stop(), 500);
-  } catch (e) {
-    console.log('Audio playback failed or not allowed yet', e);
-  }
-};
+/**
+ * Hook to manage the PRODEX alarm system.
+ * Monitors deliveries for critical time thresholds and unassigned status.
+ */
+export const useAlarmSystem = (deliveries) => {
+  const [alerts, setAlerts] = useState([]);
+  const [mutedAlerts, setMutedAlerts] = useState([]);
+  const lastSyncedSignatureRef = useRef('');
 
-export const useAlarmSystem = (orders) => {
-  const [isMuted, setIsMuted] = useState(false);
-  const [activeAlarms, setActiveAlarms] = useState([]);
+  const syncAlertsToSupabase = useCallback(async (activeAlerts) => {
+    if (!isSupabaseConfigured || !Array.isArray(activeAlerts)) return;
 
-  const toggleMute = useCallback(() => {
-    setIsMuted(prev => !prev);
+    const signature = JSON.stringify(activeAlerts.map((a) => a.id).sort());
+    if (lastSyncedSignatureRef.current === signature) {
+      return;
+    }
+
+    try {
+      const client = assertSupabaseConfigured();
+
+      if (activeAlerts.length === 0) {
+        lastSyncedSignatureRef.current = signature;
+        return;
+      }
+
+      const rows = activeAlerts.map((alert) => ({
+        order_id: alert.deliveryId,
+        company_id: alert.companyId || null,
+        type: alert.type,
+        message: alert.reason,
+        created_at: alert.timestamp || new Date().toISOString(),
+      }));
+
+      const { error } = await client.from('alerts').insert(rows);
+
+      if (!error) {
+        lastSyncedSignatureRef.current = signature;
+        console.log('[useAlarmSystem] Alertas sincronizados com sucesso!');
+      } else {
+        console.error('[useAlarmSystem] Falha ao sincronizar. Erro do Supabase:', error);
+      }
+    } catch (error) {
+      console.error('[useAlarmSystem] Exceção no código ao tentar sincronizar', error);
+    }
   }, []);
 
-  useEffect(() => {
-    if (!orders || orders.length === 0) return;
-
+  const checkAlerts = useCallback(() => {
+    if (!deliveries || !Array.isArray(deliveries)) return;
+    
     const now = new Date().getTime();
-    
-    // RED: Overdue or < 24h
-    // YELLOW: < 48h
-    // Active if status is 'pendente'
-    
-    const triggeringOrders = orders.filter(o => {
-      if (o.status !== 'pendente') return false;
-      const deliveryTime = new Date(o.desired_delivery_time).getTime();
-      const hoursLeft = (deliveryTime - now) / (1000 * 60 * 60);
-      return hoursLeft < 48; // Any order under 48h or overdue triggers alarm
+    const stored = getAlertsSnapshot();
+    const muted = stored.muted || [];
+    setMutedAlerts(muted);
+
+    const newAlerts = [];
+    let shouldPlaySound = false;
+    let highestSeverity = null;
+
+    deliveries.forEach(d => {
+      // Skip completed or cancelled deliveries
+      if (d.status === 'Entregue' || d.status === 'Cancelada' || d.status === 'entregue' || d.status === 'cancelado') return;
+
+      // Normalize date field (handles both expectedDate and desired_delivery_time)
+      const targetDate = d.expectedDate || d.desired_delivery_time;
+      if (!targetDate) return;
+
+      const expected = new Date(targetDate).getTime();
+      const hoursLeft = (expected - now) / (1000 * 60 * 60);
+
+      let type = null;
+      let reason = '';
+
+      if (hoursLeft < 0) {
+        type = 'CRITICAL';
+        reason = 'Entrega em Atraso!';
+      } else if (hoursLeft <= 24) {
+        type = 'WARNING';
+        reason = 'Entrega Próxima (<24h)';
+      } else if ((d.status === 'Pendente' || d.status === 'pendente') && !d.employee && !d.assigned_to) {
+        type = 'INFO';
+        reason = 'Pendente e Sem Funcionário Atribuído';
+      }
+
+      if (type) {
+        const alertId = `alert-${d.id}-${type}`;
+        newAlerts.push({
+          id: alertId,
+          type,
+          deliveryId: d.id,
+          companyId: d.company_id || null,
+          customerName: d.customerName || d.customer_name,
+          phone: d.phone || d.customer_phone,
+          address: d.address || d.customer_address,
+          reason,
+          timestamp: new Date().toISOString()
+        });
+
+        // Trigger sound if this specific alert is not muted
+        if (!muted.includes(alertId)) {
+          shouldPlaySound = true;
+          if (type === 'CRITICAL') highestSeverity = 'CRITICAL';
+          else if (type === 'WARNING' && highestSeverity !== 'CRITICAL') highestSeverity = 'WARNING';
+          else if (type === 'INFO' && !highestSeverity) highestSeverity = 'INFO';
+        }
+      }
     });
 
-    setActiveAlarms(triggeringOrders);
+    setAlerts(newAlerts);
+    setAlertsSnapshot({ ...stored, active: newAlerts, muted });
+    syncAlertsToSupabase(newAlerts);
 
-    if (triggeringOrders.length > 0 && !isMuted) {
-      // Play sound every 10 seconds if there are alarms
-      playBeep();
-      const interval = setInterval(playBeep, 10000);
-      return () => clearInterval(interval);
+    if (shouldPlaySound && highestSeverity) {
+      playSound(highestSeverity);
+      if (Notification.permission === 'granted') {
+        new Notification('PRODEX Alertas', { body: `Existem novos alertas de entrega críticos.` });
+      }
     }
-  }, [orders, isMuted]);
+  }, [deliveries, syncAlertsToSupabase]);
 
-  return { activeAlarms, isMuted, toggleMute };
+  useEffect(() => {
+    checkAlerts();
+    const interval = setInterval(checkAlerts, 60000); // Check every minute
+    return () => clearInterval(interval);
+  }, [checkAlerts]);
+
+  const muteAlert = (id) => {
+    const newMuted = [...mutedAlerts, id];
+    setMutedAlerts(newMuted);
+    const stored = getAlertsSnapshot();
+    setAlertsSnapshot({ ...stored, muted: newMuted });
+  };
+
+  const unmuteAlert = (id) => {
+    const newMuted = mutedAlerts.filter(m => m !== id);
+    setMutedAlerts(newMuted);
+    const stored = getAlertsSnapshot();
+    setAlertsSnapshot({ ...stored, muted: newMuted });
+  };
+
+  const muteAll = () => {
+    const newMuted = alerts.map(a => a.id);
+    setMutedAlerts(newMuted);
+    const stored = getAlertsSnapshot();
+    setAlertsSnapshot({ ...stored, muted: newMuted });
+  };
+
+  const unmuteAll = () => {
+    setMutedAlerts([]);
+    const stored = getAlertsSnapshot();
+    setAlertsSnapshot({ ...stored, muted: [] });
+  };
+
+  return {
+    alerts,
+    mutedAlerts,
+    muteAlert,
+    unmuteAlert,
+    muteAll,
+    unmuteAll
+  };
 };
 
-export const getOrderPriority = (desiredDeliveryTime, status) => {
-  if (status === 'entregue' || status === 'cancelado') return 'gray';
+/**
+ * Utility to determine the priority/color code of an order based on its deadline.
+ */
+export const getOrderPriority = (deliveryTime, status) => {
+  if (status === 'entregue' || status === 'cancelado' || status === 'Entregue' || status === 'Cancelada') return 'gray';
   
   const now = new Date().getTime();
-  const deliveryTime = new Date(desiredDeliveryTime).getTime();
-  const hoursLeft = (deliveryTime - now) / (1000 * 60 * 60);
+  const target = new Date(deliveryTime).getTime();
+  const hoursLeft = (target - now) / (1000 * 60 * 60);
 
-  if (hoursLeft < 24) return 'red';
-  if (hoursLeft < 48) return 'yellow';
+  if (hoursLeft < 0) return 'red';
+  if (hoursLeft < 24) return 'yellow';
   return 'green';
 };

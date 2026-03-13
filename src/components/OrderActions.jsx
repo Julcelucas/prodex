@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { useSupabase } from '@/hooks/useSupabase';
@@ -6,134 +7,99 @@ import { Check, Truck, XCircle, CheckCircle } from 'lucide-react';
 import { pt } from '@/lib/translations';
 
 const OrderActions = ({ order, onUpdate }) => {
-
   const { updateOrderStatus } = useSupabase();
   const { toast } = useToast();
-
   const [updating, setUpdating] = useState(false);
 
-  // segurança caso order venha undefined
-  if (!order) {
-    return null;
-  }
-
-  const status = order.status || 'pending';
-
   const handleStatusUpdate = async (newStatus, statusLabel) => {
-
-    if (updating) return;
-
     setUpdating(true);
-
-    try {
-
-      const result = await updateOrderStatus(order.id, newStatus);
-
-      if (result?.success) {
-
-        toast({
-          title: pt?.orderActions?.statusUpdated || "Status atualizado",
-          description: `${pt?.orderActions?.statusChangedTo || "Status alterado para"} ${statusLabel}`,
-        });
-
-        if (onUpdate) {
-          onUpdate();
-        }
-
-      } else {
-
-        toast({
-          title: pt?.common?.error || "Erro",
-          description: result?.error || "Falha ao atualizar status",
-          variant: 'destructive',
-        });
-
-      }
-
-    } catch (error) {
-
+    
+    const result = await updateOrderStatus(order.id, newStatus);
+    
+    if (result.success) {
       toast({
-        title: "Erro inesperado",
-        description: error.message,
+        title: pt.orderActions?.statusUpdated || 'Status Atualizado',
+        description: `${pt.orderActions?.statusChangedTo || 'O status mudou para'} ${statusLabel}`,
+      });
+      if (onUpdate) {
+        onUpdate();
+      }
+    } else {
+      toast({
+        title: pt.common.error,
+        description: result.error || 'Failed to update order status',
         variant: 'destructive',
       });
-
     }
-
+    
     setUpdating(false);
-
   };
 
   const getAvailableActions = () => {
-
     const actions = [];
 
-    // aceitar pedido
-    if (status === 'pending') {
+    if (order.status === 'pending') {
       actions.push(
         <Button
           key="accept"
-          onClick={() => handleStatusUpdate('accepted', pt?.status?.accepted || "Aceite")}
+          onClick={() => handleStatusUpdate('accepted', pt.status.accepted || 'Aceite')}
           disabled={updating}
           size="sm"
           className="bg-green-600 hover:bg-green-700 text-white"
         >
           <Check className="h-4 w-4 mr-1" />
-          {pt?.orderActions?.accept || "Aceitar"}
+          {pt.orderActions?.accept || 'Aceitar'}
         </Button>
       );
     }
 
-    // sair para entrega
-    if (status === 'accepted' || status === 'pending') {
+    if (order.status === 'accepted' || order.status === 'pending') {
       actions.push(
         <Button
           key="in_delivery"
-          onClick={() => handleStatusUpdate('in_delivery', pt?.status?.in_delivery || "Em entrega")}
+          onClick={() => handleStatusUpdate('in_delivery', pt.status.in_progress || 'Em processamento')}
           disabled={updating}
           size="sm"
           className="bg-blue-600 hover:bg-blue-700 text-white"
         >
           <Truck className="h-4 w-4 mr-1" />
-          {pt?.orderActions?.inDelivery || "Em entrega"}
+          {pt.orderActions?.inDelivery || 'Processar'}
         </Button>
       );
     }
 
-    // marcar entregue
-    if (status === 'in_delivery' || status === 'accepted') {
+    if (order.status === 'in_delivery' || order.status === 'accepted') {
       actions.push(
         <Button
           key="delivered"
-          onClick={() => handleStatusUpdate('delivered', pt?.status?.delivered || "Entregue")}
+          onClick={() => handleStatusUpdate('delivered', pt.status.delivered || 'Concluído')}
           disabled={updating}
           size="sm"
           className="bg-emerald-600 hover:bg-emerald-700 text-white"
         >
           <CheckCircle className="h-4 w-4 mr-1" />
-          {pt?.orderActions?.delivered || "Entregue"}
+          {pt.orderActions?.delivered || 'Concluir'}
         </Button>
       );
     }
 
-    // cancelar pedido
-    if (status !== 'delivered' && status !== 'cancelled') {
+    if (order.status !== 'delivered' && order.status !== 'cancelled') {
       actions.push(
         <Button
           key="cancel"
-          onClick={() => handleStatusUpdate('cancelled', pt?.status?.cancelled || "Cancelado")}
+          onClick={() => handleStatusUpdate('cancelled', pt.status.cancelled || 'Cancelado')}
           disabled={updating}
           size="sm"
           variant="destructive"
+          className="bg-red-600 hover:bg-red-700 text-white"
         >
           <XCircle className="h-4 w-4 mr-1" />
-          {pt?.orderActions?.cancel || "Cancelar"}
+          {pt.orderActions?.cancel || 'Cancelar'}
         </Button>
       );
     }
 
     return actions;
-
   };
 
   return (
@@ -141,7 +107,6 @@ const OrderActions = ({ order, onUpdate }) => {
       {getAvailableActions()}
     </div>
   );
-
 };
 
 export default OrderActions;

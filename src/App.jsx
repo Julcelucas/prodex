@@ -1,118 +1,184 @@
+
 import React from 'react';
-import { Route, Routes, BrowserRouter as Router } from 'react-router-dom';
-import { AuthProvider } from './context/AuthContext';
-import { Toaster } from './components/ui/toaster';
-import ScrollToTop from './components/ScrollToTop';
-import ProtectedRoute from './components/ProtectedRoute';
+import { Navigate, Route, Routes, BrowserRouter as Router } from 'react-router-dom';
+import { AuthProvider } from '@/context/AuthContext';
+import { Toaster } from '@/components/ui/toaster';
+import ScrollToTop from '@/components/ScrollToTop';
+
+// Layout Components
+import Header from '@/components/Header';
+import Footer from '@/components/Footer';
 
 // Pages
-import HomePage from './pages/HomePage';
-import PricingPage from './pages/PricingPage';
-import CheckoutPage from './pages/CheckoutPage';
+import LandingPage from '@/pages/LandingPage';
+import PricingPage from '@/pages/PricingPage';
+import AdminLogin from '@/pages/auth/AdminLogin';
+import EmployeeLogin from '@/pages/auth/EmployeeLogin';
+import GestorRegister from '@/pages/auth/GestorRegister';
+import FuncionarioRegister from '@/pages/auth/FuncionarioRegister';
+import CompanyDashboard from '@/pages/dashboard/AdminDashboard';
+import EmployeeDashboard from '@/pages/dashboard/EmployeeDashboard';
+import SiteAdminLogin from '@/pages/admin/AdminLogin';
+import SiteAdminDashboard from '@/pages/admin/AdminDashboard';
 
-// Auth
-import GestorRegister from './pages/auth/GestorRegister';
-import FuncionarioRegister from './pages/auth/FuncionarioRegister';
-import Login from './pages/auth/Login';
-import AdminLogin from './pages/admin/AdminLogin';
+import { StructuredData } from '@/hooks/useSEO';
+import { seoConfig } from '@/lib/seoConfig';
+import ProtectedRoute from '@/components/ProtectedRoute';
 
-// Dashboards
-import GestorDashboard from './pages/dashboard/GestorDashboard';
-import FuncionarioDashboard from './pages/dashboard/FuncionarioDashboard';
-import AdminDashboard from './pages/admin/AdminDashboard';
+// Global BreadcrumbList Schema
+const breadcrumbSchema = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {
+      "@type": "ListItem",
+      "position": 1,
+      "name": "Página Inicial",
+      "item": seoConfig.SITE_URL
+    },
+    {
+      "@type": "ListItem",
+      "position": 2,
+      "name": "Preços",
+      "item": `${seoConfig.SITE_URL}/pricing`
+    }
+  ]
+};
 
-// Orders
-import CreateOrder from './pages/customer/CreateOrder'; // ✅ IMPORTANTE
+// Global Organization Schema
+const globalOrgSchema = {
+  "@context": "https://schema.org",
+  "@type": "Organization",
+  "name": seoConfig.COMPANY_NAME,
+  "url": seoConfig.SITE_URL,
+  "logo": seoConfig.OG_IMAGE,
+  "sameAs": [
+    seoConfig.SOCIAL_MEDIA.facebook,
+    seoConfig.SOCIAL_MEDIA.instagram,
+    seoConfig.SOCIAL_MEDIA.linkedin,
+    seoConfig.SOCIAL_MEDIA.twitter
+  ]
+};
 
 function App() {
   return (
     <AuthProvider>
       <Router>
         <ScrollToTop />
+        <StructuredData data={breadcrumbSchema} />
+        <StructuredData data={globalOrgSchema} />
+        
+        <div className="min-h-screen flex flex-col bg-background">
+          <Routes>
+            {/* The Dashboard handles its own header/footer layout now for full app immersion */}
+            <Route
+              path="/admin/dashboard"
+              element={
+                <Navigate to="/empresa/dashboard" replace />
+              }
+            />
+            <Route
+              path="/site-admin/dashboard"
+              element={
+                <ProtectedRoute role="admin">
+                  <SiteAdminDashboard />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/site-admin/dashboard/*"
+              element={
+                <ProtectedRoute role="admin">
+                  <SiteAdminDashboard />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/dashboard"
+              element={
+                <Navigate to="/empresa/dashboard" replace />
+              }
+            />
+            <Route
+              path="/empresa/dashboard"
+              element={
+                <ProtectedRoute role="gestor">
+                  <CompanyDashboard />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/empresa/dashboard/*"
+              element={
+                <ProtectedRoute role="gestor">
+                  <CompanyDashboard />
+                </ProtectedRoute>
+              }
+            />
 
-        <Routes>
+            <Route path="/gestor-dashboard" element={<Navigate to="/empresa/dashboard" replace />} />
+            <Route path="/funcionario-dashboard" element={<Navigate to="/funcionario/dashboard" replace />} />
+            
+            <Route
+              path="/funcionario/dashboard"
+              element={
+                <ProtectedRoute role="funcionario">
+                  <EmployeeDashboard />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/funcionario/dashboard/*"
+              element={
+                <ProtectedRoute role="funcionario">
+                  <EmployeeDashboard />
+                </ProtectedRoute>
+              }
+            />
 
-          {/* Public Pages */}
-          <Route path="/" element={<HomePage />} />
-          <Route path="/pricing" element={<PricingPage />} />
-          <Route path="/checkout" element={<CheckoutPage />} />
+            {/* Standard Pages Wrap with Header and Footer */}
+            <Route
+              path="*"
+              element={
+                <>
+                  <Header />
+                  <main className="flex-1 flex flex-col w-full h-full">
+                    <Routes>
+                      {/* Public Routes */}
+                      <Route path="/" element={<LandingPage />} />
+                      <Route path="/home" element={<LandingPage />} />
+                      <Route path="/pricing" element={<PricingPage />} />
+                      
+                      <Route path="/admin/login" element={<AdminLogin />} />
+                      <Route path="/site-admin/login" element={<SiteAdminLogin />} />
+                      <Route path="/login" element={<EmployeeLogin />} />
+                      <Route path="/gestor-register" element={<GestorRegister />} />
+                      <Route path="/funcionario-register" element={<FuncionarioRegister />} />
+                      <Route path="/employee/register" element={<FuncionarioRegister />} />
 
-          {/* Login */}
-          <Route path="/login" element={<Login />} />
-          <Route path="/admin-login" element={<AdminLogin />} />
-
-          {/* Register */}
-          <Route path="/gestor-register" element={<GestorRegister />} />
-          <Route path="/funcionario-register" element={<FuncionarioRegister />} />
-
-          {/* ========================= */}
-          {/* DASHBOARDS PROTEGIDOS */}
-          {/* ========================= */}
-
-          <Route
-            path="/gestor-dashboard"
-            element={
-              <ProtectedRoute userType="gestor">
-                <GestorDashboard />
-              </ProtectedRoute>
-            }
-          />
-
-          <Route
-            path="/funcionario-dashboard"
-            element={
-              <ProtectedRoute userType="funcionario">
-                <FuncionarioDashboard />
-              </ProtectedRoute>
-            }
-          />
-
-          <Route
-            path="/admin-dashboard"
-            element={
-              <ProtectedRoute userType="admin">
-                <AdminDashboard />
-              </ProtectedRoute>
-            }
-          />
-
-          {/* ========================= */}
-          {/* CRIAR PEDIDO */}
-          {/* ========================= */}
-
-          <Route
-            path="/create-order"
-            element={
-              <ProtectedRoute userType="gestor">
-                <CreateOrder />
-              </ProtectedRoute>
-            }
-          />
-
-          {/* ========================= */}
-          {/* 404 */}
-          {/* ========================= */}
-
-          <Route
-            path="*"
-            element={
-              <div className="min-h-screen flex items-center justify-center bg-gray-50">
-                <div className="text-center">
-                  <h1 className="text-6xl font-bold text-gray-900 mb-4">404</h1>
-                  <p className="text-xl text-gray-600 mb-8">Página não encontrada</p>
-                  <a
-                    href="/"
-                    className="text-blue-600 hover:text-blue-700 font-semibold"
-                  >
-                    Voltar ao Início
-                  </a>
-                </div>
-              </div>
-            }
-          />
-
-        </Routes>
-
+                      {/* Catch-all 404 Route */}
+                      <Route
+                        path="*"
+                        element={
+                          <div className="flex-1 flex items-center justify-center bg-gray-50 min-h-[60vh]">
+                            <div className="text-center">
+                              <h1 className="text-6xl font-extrabold text-primary mb-4">404</h1>
+                              <p className="text-xl text-gray-600 mb-8">Página não encontrada</p>
+                              <a href="/" className="text-primary hover:underline font-bold bg-white px-6 py-3 rounded-md shadow-sm border border-gray-200">
+                                Voltar ao Início
+                              </a>
+                            </div>
+                          </div>
+                        }
+                      />
+                    </Routes>
+                  </main>
+                  <Footer />
+                </>
+              }
+            />
+          </Routes>
+        </div>
         <Toaster />
       </Router>
     </AuthProvider>
