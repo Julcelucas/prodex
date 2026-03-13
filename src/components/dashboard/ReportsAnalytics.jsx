@@ -9,14 +9,36 @@ import { useAuth } from '@/hooks/useAuth';
 
 const COLORS = ['#0f172a', '#3B82F6', '#F59E0B', '#EF4444']; // PRODEX colors
 
+const toCsvValue = (value) => {
+  const normalized = value === null || value === undefined ? '' : String(value);
+  return `"${normalized.replace(/"/g, '""')}"`;
+};
+
+const formatDateTime = (value) => {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleString('pt-PT');
+};
+
 const ReportsAnalytics = ({ deliveries = [], employees = [], onRefresh }) => {
   const { toast } = useToast();
   const { currentUser } = useAuth();
 
+  const companyDeliveries = useMemo(
+    () => deliveries.filter((d) => d.company_id === currentUser?.company_id),
+    [deliveries, currentUser?.company_id]
+  );
+
+  const companyEmployees = useMemo(
+    () => employees.filter((e) => e.company_id === currentUser?.company_id),
+    [employees, currentUser?.company_id]
+  );
+
   // Data Isolation and Calculations memoized together to prevent continuous re-evaluation
   const analytics = useMemo(() => {
-    const compDelivs = deliveries.filter(d => d.company_id === currentUser?.company_id);
-    const compEmps = employees.filter(e => e.company_id === currentUser?.company_id);
+    const compDelivs = companyDeliveries;
+    const compEmps = companyEmployees;
 
     const totalDeliveries = compDelivs.length;
     const deliveredCount = compDelivs.filter(d => d.status === 'Concluído' || d.status === 'Entregue').length;
@@ -51,11 +73,156 @@ const ReportsAnalytics = ({ deliveries = [], employees = [], onRefresh }) => {
     ];
 
     return { totalDeliveries, completionRate, pendingCount, activeEmps, statusData, employeeData, monthlyData };
-  }, [deliveries, employees, currentUser?.company_id]);
+  }, [companyDeliveries, companyEmployees]);
+
+  const exportCsv = useCallback(() => {
+    if (companyDeliveries.length === 0) {
+      toast({ title: 'Sem dados', description: 'Não há pedidos para exportar.', variant: 'destructive' });
+      return;
+    }
+
+    const headers = [
+      'ID Pedido',
+      'Cliente',
+      'Telefone',
+      'Morada',
+      'Tipo',
+      'Prioridade',
+      'Estado',
+      'Funcionário',
+      'Data Prevista',
+      'Criado Em',
+    ];
+
+    const lines = companyDeliveries.map((d) => {
+      const assignedEmployee = companyEmployees.find((e) => e.id === (d.employee || d.assigned_to));
+      return [
+        d.id,
+        d.customerName || d.customer_name || '-',
+        d.phone || d.customer_phone || '-',
+        d.address || d.customer_address || d.delivery_address || '-',
+        d.type || d.order_type || '-',
+        d.priority || '-',
+        d.status || '-',
+        assignedEmployee?.name || '-',
+        formatDateTime(d.expectedDate || d.desired_delivery_time),
+        formatDateTime(d.createdDate || d.created_at),
+      ];
+    });
+
+    const csvContent = [headers, ...lines]
+      .map((row) => row.map(toCsvValue).join(';'))
+      .join('\n');
+
+    const blob = new Blob([`\uFEFF${csvContent}`], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `relatorio-pedidos-${currentUser?.company_id || 'empresa'}-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    toast({ title: 'CSV exportado', description: 'Download do relatório CSV iniciado.' });
+  }, [companyDeliveries, companyEmployees, currentUser?.company_id, toast]);
+
+  const exportPdf = useCallback(() => {
+    if (companyDeliveries.length === 0) {
+      toast({ title: 'Sem dados', description: 'Não há pedidos para exportar.', variant: 'destructive' });
+      return;
+    }
+
+    const rowsHtml = companyDeliveries
+      .map((d) => {
+        const assignedEmployee = companyEmployees.find((e) => e.id === (d.employee || d.assigned_to));
+        return `
+          <tr>
+            <td>${d.id || '-'}</td>
+            <td>${d.customerName || d.customer_name || '-'}</td>
+            <td>${d.status || '-'}</td>
+            <td>${d.priority || '-'}</td>
+            <td>${assignedEmployee?.name || '-'}</td>
+            <td>${formatDateTime(d.expectedDate || d.desired_delivery_time)}</td>
+          </tr>
+        `;
+      })
+      .join('');
+
+    const popup = window.open('', '_blank', 'width=1200,height=900');
+    if (!popup) {
+      toast({ title: 'Popup bloqueado', description: 'Permite popups para exportar PDF.', variant: 'destructive' });
+      return;
+    }
+
+    popup.document.write(`
+      <!doctype html>
+      <html lang="pt">
+      <head>
+        <meta charset="utf-8" />
+        <title>Relatório de Pedidos</title>
+        <style>
+          body { font-family: Arial, sans-serif; padding: 24px; color: #111827; }
+          h1 { margin: 0 0 8px; font-size: 22px; }
+          p { margin: 0 0 20px; color: #4b5563; }
+          .summary { display: flex; gap: 12px; margin-bottom: 18px; }
+          .card { border: 1px solid #e5e7eb; border-radius: 8px; padding: 10px 12px; min-width: 130px; }
+          .label { font-size: 12px; color: #6b7280; text-transform: uppercase; }
+          .value { font-size: 20px; font-weight: 700; }
+          table { width: 100%; border-collapse: collapse; font-size: 12px; }
+          th, td { border: 1px solid #e5e7eb; padding: 8px; text-align: left; }
+          th { background: #f9fafb; }
+          @media print {
+            body { padding: 0; }
+          }
+        </style>
+      </head>
+      <body>
+        <h1>Relatório de Pedidos</h1>
+        <p>Empresa: ${currentUser?.company_id || '-'} | Gerado em: ${new Date().toLocaleString('pt-PT')}</p>
+        <div class="summary">
+          <div class="card"><div class="label">Total Pedidos</div><div class="value">${analytics.totalDeliveries}</div></div>
+          <div class="card"><div class="label">Taxa Conclusão</div><div class="value">${analytics.completionRate}%</div></div>
+          <div class="card"><div class="label">Pendentes</div><div class="value">${analytics.pendingCount}</div></div>
+          <div class="card"><div class="label">Funcionários Ativos</div><div class="value">${analytics.activeEmps}</div></div>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Cliente</th>
+              <th>Estado</th>
+              <th>Prioridade</th>
+              <th>Funcionário</th>
+              <th>Data Prevista</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rowsHtml}
+          </tbody>
+        </table>
+        <script>
+          window.onload = function () {
+            window.print();
+            window.onafterprint = function () { window.close(); };
+          }
+        </script>
+      </body>
+      </html>
+    `);
+    popup.document.close();
+
+    toast({ title: 'PDF preparado', description: 'Janela de impressão aberta para guardar em PDF.' });
+  }, [analytics, companyDeliveries, companyEmployees, currentUser?.company_id, toast]);
 
   const handleExport = useCallback((type) => {
-    toast({ title: `Exportar ${type}`, description: `O download do ficheiro ${type} foi iniciado de forma segura.` });
-  }, [toast]);
+    if (type === 'CSV') {
+      exportCsv();
+      return;
+    }
+
+    exportPdf();
+  }, [exportCsv, exportPdf]);
 
   const handleRefresh = useCallback(async () => {
     if (onRefresh) {

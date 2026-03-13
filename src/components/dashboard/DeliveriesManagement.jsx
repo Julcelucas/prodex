@@ -6,12 +6,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-import { Search, Plus, Edit, Trash2, Eye, Calendar, Package } from 'lucide-react';
+import { Search, Plus, Edit, Trash2, Eye, Calendar, Package, MessageCircle } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 
 const DeliveriesManagement = ({ deliveries = [], setDeliveries, employees = [], onCreateDelivery, onUpdateDelivery, onDeleteDelivery, loading = false }) => {
   const { toast } = useToast();
-  const { currentUser } = useAuth();
+  const { currentUser, companyInfo } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
   const [sortConfig, setSortConfig] = useState({ key: 'expectedDate', direction: 'asc' });
@@ -164,6 +164,108 @@ const DeliveriesManagement = ({ deliveries = [], setDeliveries, employees = [], 
     }
   }, []);
 
+  const normalizePhoneForWhatsApp = useCallback((phone) => {
+    if (!phone) return '';
+
+    let digits = String(phone).replace(/\D/g, '');
+    if (digits.startsWith('00')) {
+      digits = digits.slice(2);
+    }
+
+    // Angola local format often arrives as 9 digits; prefix with country code.
+    if (digits.length === 9) {
+      digits = `244${digits}`;
+    }
+
+    return digits;
+  }, []);
+
+  const getWhatsAppStatusContent = useCallback((status) => {
+    const normalizedStatus = String(status || '').trim().toLowerCase();
+
+    if (normalizedStatus === 'em processamento' || normalizedStatus === 'em andamento') {
+      return {
+        headline: '📦 *Atualização do seu pedido*',
+        summary: 'O seu pedido foi recebido e *já está em processamento*.',
+        closing: 'Assim que o pedido sair para entrega, enviaremos uma nova atualização.'
+      };
+    }
+
+    if (normalizedStatus === 'em entrega' || normalizedStatus === 'in_delivery') {
+      return {
+        headline: '🛵 *O seu pedido saiu para entrega*',
+        summary: 'O seu pedido *já está a caminho* e deverá chegar dentro do prazo previsto.',
+        closing: 'Se precisar de algum ajuste, responda a esta mensagem ou contacte a nossa equipa.'
+      };
+    }
+
+    if (normalizedStatus === 'entregue' || normalizedStatus === 'concluído' || normalizedStatus === 'concluido') {
+      return {
+        headline: '✅ *Pedido concluído*',
+        summary: 'Informamos que o seu pedido *foi entregue com sucesso*.',
+        closing: 'Obrigado por confiar no nosso serviço. Ficamos à disposição para o próximo pedido.'
+      };
+    }
+
+    if (normalizedStatus === 'cancelado' || normalizedStatus === 'cancelada') {
+      return {
+        headline: '⚠️ *Atualização do seu pedido*',
+        summary: 'Informamos que o seu pedido *foi cancelado*.',
+        closing: 'Se precisar de esclarecimentos ou quiser refazer o pedido, a nossa equipa está disponível para ajudar.'
+      };
+    }
+
+    return {
+      headline: '📦 *Atualização do seu pedido*',
+      summary: `O estado atual do seu pedido é: *${status || 'Em atualização'}*.`,
+      closing: 'Continuaremos a informar cada nova atualização do seu pedido.'
+    };
+  }, []);
+
+  const handleSendWhatsApp = useCallback((delivery) => {
+    const phone = normalizePhoneForWhatsApp(delivery?.phone || delivery?.customer_phone);
+    if (!phone || phone.length < 11) {
+      toast({ title: 'Telefone inválido', description: 'Não foi possível enviar WhatsApp: número do cliente inválido.', variant: 'destructive' });
+      return;
+    }
+
+    const customerName = delivery?.customerName || delivery?.customer_name || 'cliente';
+    const employeeName = companyEmployees.find((e) => e.id === (delivery?.employee || delivery?.assigned_to))?.name || 'A definir';
+    const expected = delivery?.expectedDate || delivery?.desired_delivery_time;
+    const expectedLabel = expected ? new Date(expected).toLocaleDateString('pt-AO') : 'Não definida';
+    const deliveryAddress = delivery?.address || delivery?.customer_address || 'Não informada';
+    const notes = (delivery?.notes || delivery?.description || '').trim() || 'Sem observações.';
+    const companyName = companyInfo?.name || 'PRODEX Angola';
+    const { headline, summary, closing } = getWhatsAppStatusContent(delivery?.status);
+
+    const message = [
+      headline,
+      '',
+      `Olá, *${customerName}*!`,
+      summary,
+      '',
+      `🧾 *Pedido:* ${delivery?.id || '-'}`,
+      `📍 *Entrega:* ${deliveryAddress}`,
+      `👨‍💼 *Responsável:* ${employeeName}`,
+      `📅 *Previsão:* ${expectedLabel}`,
+      '',
+      `📝 *Observações:* ${notes}`,
+      '',
+      closing,
+      '',
+      `Obrigado por escolher a *${companyName}*. 🚀`,
+    ].join('\n');
+
+    const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+    const tab = window.open(url, '_blank', 'noopener,noreferrer');
+    if (!tab) {
+      toast({ title: 'Popup bloqueado', description: 'Permita popups para abrir o WhatsApp.', variant: 'destructive' });
+      return;
+    }
+
+    toast({ title: 'WhatsApp', description: 'Mensagem preparada com sucesso para o cliente.' });
+  }, [companyEmployees, companyInfo?.name, getWhatsAppStatusContent, normalizePhoneForWhatsApp, toast]);
+
   return (
     <Card className="shadow-sm">
       <CardHeader className="flex flex-col md:flex-row items-center justify-between border-b pb-4 gap-4">
@@ -229,6 +331,7 @@ const DeliveriesManagement = ({ deliveries = [], setDeliveries, employees = [], 
                     </span>
                   </td>
                   <td className="px-4 py-3 text-right space-x-1">
+                    <Button variant="ghost" size="sm" className="text-green-600 hover:text-green-700" onClick={() => handleSendWhatsApp(d)} title="Enviar atualização por WhatsApp"><MessageCircle className="h-4 w-4" /></Button>
                     <Button variant="ghost" size="sm" onClick={() => openViewModal(d)}><Eye className="h-4 w-4" /></Button>
                     <Button variant="ghost" size="sm" onClick={() => openEditModal(d)}><Edit className="h-4 w-4" /></Button>
                     <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-700" onClick={() => handleDelete(d.id)}><Trash2 className="h-4 w-4" /></Button>
@@ -265,6 +368,11 @@ const DeliveriesManagement = ({ deliveries = [], setDeliveries, employees = [], 
                       <div className="bg-gray-50 p-3 rounded-lg"><strong className="block text-gray-500 mb-1">Data Prevista</strong> {currentDelivery.expectedDate ? new Date(currentDelivery.expectedDate).toLocaleString('pt-AO') : 'N/A'}</div>
                       <div className="bg-gray-50 p-3 rounded-lg"><strong className="block text-gray-500 mb-1">Funcionário</strong> {companyEmployees.find(e => e.id === currentDelivery.employee)?.name || 'Não atribuído'}</div>
                       <div className="col-span-2 bg-gray-50 p-3 rounded-lg"><strong className="block text-gray-500 mb-1">Notas</strong> {currentDelivery.notes || 'Sem notas.'}</div>
+                    </div>
+                    <div className="pt-4">
+                      <Button type="button" className="bg-green-600 hover:bg-green-700 text-white font-semibold" onClick={() => handleSendWhatsApp(currentDelivery)}>
+                        <MessageCircle className="h-4 w-4 mr-2" /> Enviar no WhatsApp
+                      </Button>
                     </div>
                   </div>
                 ) : (
